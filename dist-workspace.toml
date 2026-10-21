@@ -1,0 +1,28 @@
+[workspace]
+members = ["cargo:."]
+
+# Config for 'dist'
+[dist]
+# The preferred dist version to use in CI (Cargo.toml SemVer syntax)
+cargo-dist-version = "0.33.0"
+# CI backends to support
+ci = "github"
+# The installers to generate for each app
+installers = ["shell", "powershell"]
+# Target platforms to build apps for (Rust target-triple syntax)
+targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
+# Path that installers should place binaries in. Most friends won't have Rust,
+# so use the XDG bin directory (~/.local/bin) rather than ~/.cargo/bin.
+install-path = ["$XDG_BIN_HOME/", "$XDG_DATA_HOME/../bin", "~/.local/bin"]
+# Where to host releases
+hosting = "github"
+# Whether to install an updater program
+install-updater = false
+# Build every release artifact on pull requests, so a PR cannot merge unless
+# the release would build. Public repositories don't pay for Actions minutes.
+pr-run-mode = "upload"
+# Start releases with workflow_dispatch instead of a tag push. The
+# release-on-version-bump workflow dispatches one when a merge to main carries
+# a version with no tag yet, and the release creates the tag. (Tags pushed with
+# the workflow's own token would not trigger another workflow.)
+dispatch-releases = true

@@ -85,16 +85,38 @@ cargo clippy --all-targets -- -D warnings
 The tests create throwaway repositories in temporary directories and run the
 built binary against them, with Git's global and system config switched off.
 
+### Pull requests
+
+`main` only changes through pull requests. Each PR runs two workflows, and
+both must pass before it can merge:
+
+- **CI** (`ci.yml`): rustfmt and clippy, the tests on Linux, macOS, and
+  Windows, and a check on the version in `Cargo.toml`. The `ci-ok` job passes
+  only when all of them pass.
+- **Release** (`release.yml`, in dry-run mode): cargo-dist builds the release
+  archives and installers for every target, exactly as a release would. The
+  builds are attached to the workflow run if you want to try a PR's binary.
+
 ## Release
 
+`Cargo.toml` holds the version, and merging a version bump publishes it.
+
+1. In a PR, bump `version` in `Cargo.toml` and run `cargo check` so
+   `Cargo.lock` picks up the new version (CI builds with `--locked`). The
+   version check reports "Merging this PR will release vX.Y.Z", and fails if
+   the version is older than the latest release.
+2. Merge the PR. The **Release on version bump** workflow sees a version with
+   no tag yet and starts the Release workflow, which builds every target,
+   creates the `vX.Y.Z` tag on that commit, and publishes the GitHub release
+   with the installers.
+
+PRs that leave the version alone release nothing; their changes go out with
+the next bump. To retry a release that failed, run
+`gh workflow run release.yml -f tag=vX.Y.Z`, or merge the fix: the next merge
+to `main` starts the release again while the tag is still missing.
+
 Releases are built by [cargo-dist](https://github.com/axodotdev/cargo-dist).
-Its settings are in `dist-workspace.toml`, and it generates
-`.github/workflows/release.yml`; don't edit that workflow by hand.
-
-1. Bump `version` in `Cargo.toml` and commit.
-2. Tag the commit with the version, for example `v0.2.0`, and push the tag.
-
-The release workflow builds the binaries for macOS, Linux, and Windows, then
-publishes them with the installers to a GitHub release. Run `dist plan` to
-preview what a release will contain. After upgrading cargo-dist, run
-`dist init` to regenerate the workflow.
+Its settings are in `dist-workspace.toml`, and `dist generate` writes
+`.github/workflows/release.yml` from them; don't edit that workflow by hand.
+Run `dist plan` to preview what a release will contain, and `dist init` after
+upgrading cargo-dist.

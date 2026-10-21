@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - run: rustup toolchain install stable --profile minimal --component clippy,rustfmt
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets --locked -- -D warnings
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - run: rustup toolchain install stable --profile minimal
+      - run: cargo test --locked
+
+  # Cargo.toml holds the version. Merging a PR whose version has no tag yet
+  # releases it (see release-on-version-bump.yml), so make sure it moves forward.
+  version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Check the version in Cargo.toml
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "git-kit") | .version')
+          tag="v$version"
+
+          if git rev-parse --quiet --verify "refs/tags/$tag" > /dev/null; then
+            echo "::notice::$tag is already released, so merging this PR will not publish a release."
+            exit 0
+          fi
+
+          # sort -V orders plain versions correctly, but not SemVer pre-release suffixes.
+          latest=$(git tag --list 'v[0-9]*' | sort -V | tail -n 1)
+          if [ -n "$latest" ] && [ "$(printf '%s\n' "$latest" "$tag" | sort -V | tail -n 1)" != "$tag" ]; then
+            echo "::error file=Cargo.toml::Version $version is older than the latest release, $latest."
+            exit 1
+          fi
+
+          echo "::notice::Merging this PR will release $tag."
+
+  # The one check the ruleset needs from this workflow, so adding or renaming a
+  # job above never means editing the ruleset.
+  ci-ok:
+    if: always()
+    needs: [lint, test, version]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check that every CI job passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          for result in $RESULTS; do
+            if [ "$result" != success ]; then
+              echo "::error::A CI job finished with result: $result"
+              exit 1
+            fi
+          done
